@@ -6,7 +6,7 @@ import random
 import codecs
 import pathlib
 import math
-from PIL import Image
+from PIL import Image, ImageDraw
 import numpy as np
 import cv2
 import Aug_Operations as aug
@@ -129,31 +129,16 @@ def rotate_img(image, degree):
 
     return image, p.T
 
-def mergeImageAtPint(image, txt_img, point):
-    top, left = point
-    image = image.convert('RGB')
-    image = np.array(image) 
-    # Convert RGB to BGR 
-    image = image[:, :, ::-1].copy() 
+def mergeImageAtPoint(image, txt_img, left_top_point):
+    left, top = left_top_point
+    image  = pltImage2Array(image)
     
     w, h = txt_img.size
-
+    assert (left+w) <= image.shape[1] and (top+h) <= image.shape[0]  # numpy.shape: height, width, channel
     res_img = np.array(image)
 
     roi_img = image[top:(top+h), left:(left+w),:]
-    color1 = cv2.mean(roi_img)
-    color = np.zeros(3, dtype=np.int)
-    color[0] = math.ceil(color1[2])
-    color[2] = math.ceil(color1[1])
-    color[1] = math.ceil(color1[0])
-
-
-    for k in range(0,3):
-        s = random.randint(0, 2)
-        if color[s] > 150:
-            color[s] = random.randint(0,20)
-        else:
-            color[s] = random.randint(230,255)
+    color = setColor(roi_img)
 
     txt_img = np.array(txt_img)
     mask = txt_img[:, :, 0]
@@ -167,3 +152,47 @@ def mergeImageAtPint(image, txt_img, point):
     res_img = Image.fromarray(res_img)
 
     return res_img
+
+def mergeBgimgAndTxtimgPoints(left_top_point, points):
+    left, top = left_top_point
+    for k in range(0, 4):
+        points[k, :] += np.array([left, top])
+    return points
+
+def setColor(roi_img):
+    color1 = cv2.mean(roi_img)
+    color = np.zeros(3, dtype=np.int)
+    color[0] = math.ceil(color1[2])
+    color[2] = math.ceil(color1[1])
+    color[1] = math.ceil(color1[0])
+    for k in range(0,3):
+        s = random.randint(0, 2)
+        if color[s] > 150:
+            color[s] = random.randint(0,20)
+        else:
+            color[s] = random.randint(230,255)
+    return color
+
+def pltImage2Array(image):
+    image = image.convert('RGB')
+    image = np.array(image) 
+    # Convert RGB to BGR 
+    image = image[:, :, ::-1].copy() 
+    return image
+
+def saveIdCharacterDict2File(id_character_dict, save_path):
+    with codecs.open(save_path, 'w', encoding='utf-8') as file:
+        for (key, val) in id_character_dict.items():
+            file.write(str(key) + ' ' + val + '\n')  # the first index must be zero
+    return
+
+def drawMulContentsRectangle(image, mulcontents_points):
+    draw = ImageDraw.Draw(image)
+    for content_points in mulcontents_points:
+        for point in content_points:
+            draw.rectangle((tuple(point[0]), tuple(point[2])))
+    del draw
+    return image
+
+def getRandomOneFromList(list):
+    return list[random.randint(0, len(list)-1)]
