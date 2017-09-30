@@ -39,6 +39,7 @@ class OCRData(object):
         self.args['font_size_min'] = 32
         self.args['image_number'] = 10
         self.args['save_full_image'] = 0
+        self.args['add_rectangle'] = 0
         return self.args
 
 
@@ -69,7 +70,7 @@ class OCRData(object):
         for i in tqdm.tqdm(range(image_number)):
             content, content_index = utils.get_contents(self.id_character_dict, self.args['characters_length_tuple'])
             background_image_path, font_path = map(utils.getRandomOneFromList, [self.bg_img_list, self.font_list])
-            image, points = self.putContent2Image(content, background_image_path, font_path)
+            image, points = self.putContent2Image(content, background_image_path, font_path, selt.args['add_rectangle'])
             if self.args['save_full_image']:
                 self.saveImage(image, i)
             part_images, roi_points = utils.cropImageByPoints(image, points)
