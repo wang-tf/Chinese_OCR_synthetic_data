@@ -260,3 +260,8 @@ def getOneLineRectanglePoints(one_line_points):
     left = min(one_line_points[0][0][0], one_line_points[0][3][0])
     right = max(one_line_points[-1][1][0], one_line_points[-1][2][0])
     return np.array([[left, top], [right, top], [right, bottom], [left, bottom]])
+
+def findMaxIndex(image_list):
+    image_list = [int(image_path.split('/')[-1].split('_')[0]) for image_path in image_list]
+    image_list = sorted(image_list)
+    return image_list[-1]

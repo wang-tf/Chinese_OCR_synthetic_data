@@ -7,17 +7,20 @@ from PIL import Image, ImageDraw, ImageFont
 import utils 
 import codecs
 import tqdm
+import glob
 
 
 def main():
-    root_dir = './test_ocrdataset'
+    # root_dir = './test_ocrdataset'
+    root_dir = '/data0/dataset/ocr/recognition/ocr_500classes'
     data = OCRData(root_dir)
     data.makeNeededDir()
+    data.args['classes_number'] = 500
     print('The arguments :')
     print(data.args)
     
     data.saveTopNCharacters2File(data.args['characters_file_path'], data.args['classes_number'], data.args['id_character_file_path'])
-    data.args['image_number'] = 20
+    data.args['image_number'] = data.args['classes_number']*800
     data.synthesizeAllImages(data.args['image_number'])
 
 
@@ -29,7 +32,7 @@ class OCRData(object):
 
     def setArguments(self):
         self.args['characters_length_tuple'] = (3, 6)
-        self.args['valiation_rate'] = 0.2
+        self.args['validation_rate'] = 0.2
         self.args['test_rate'] = 0.2
         self.args['background_image_dir'] = './background'
         self.args['fonts_dir'] = './fonts'
@@ -46,8 +49,8 @@ class OCRData(object):
     def makeNeededDir(self):
         utils.makeDirectory(self.args['root_dir'])
         self.makePartDirs('train')
-        if self.args['valiation_rate'] > 0:
-            self.makePartDirs('valiation')
+        if self.args['validation_rate'] > 0:
+            self.makePartDirs('validation')
         if self.args['test_rate'] > 0:
             self.makePartDirs('test')
         self.args['annotations_dir'] = os.path.join(self.args['root_dir'], 'annotations')
@@ -67,10 +70,11 @@ class OCRData(object):
     def synthesizeAllImages(self, image_number):
         self.bg_img_list = utils.getBackgroundListFromDir(self.args['background_image_dir'])
         self.font_list = utils.getFontListFromDir(self.args['fonts_dir'])
-        for i in tqdm.tqdm(range(image_number)):
+        start_index = self.restoreFromPartImageDir()
+        for i in tqdm.tqdm(range(start_index, image_number)):
             content, content_index = utils.get_contents(self.id_character_dict, self.args['characters_length_tuple'])
             background_image_path, font_path = map(utils.getRandomOneFromList, [self.bg_img_list, self.font_list])
-            image, points = self.putContent2Image(content, background_image_path, font_path, selt.args['add_rectangle'])
+            image, points = self.putContent2Image(content, background_image_path, font_path, self.args['add_rectangle'])
             if self.args['save_full_image']:
                 self.saveImage(image, i)
             part_images, roi_points = utils.cropImageByPoints(image, points)
@@ -92,13 +96,14 @@ class OCRData(object):
             with codecs.open(ann_path, 'w', encoding='utf-8') as file:
                 file.write(' '.join([ann_name.split('.')[0], str(rectangle_points.tolist()), str(one_content)]))
             
-    def putContent2Image(self, mulcontents, background_image_path, font_path, add_rectangle=0):
+    def putContent2Image(self, mulcontents, background_image_path, font_path, add_rectangle=0, resize_rate=2):
         try:
             image = Image.open(background_image_path)
             mulcontents_points = []
             font_size_max = image.size[0]/self.args['characters_length_tuple'][1]
             while font_size_max < self.args['font_size_min']:
-                image = image.resize((image.size[0]*2, image.size[1]*2))
+                resize_rate = resize_rate * 2
+                image = image.resize((image.size[0]*resize_rate, image.size[1]*resize_rate))
                 font_size_max = image.size[0]/self.args['characters_length_tuple'][1]
             font_size = random.randint(self.args['font_size_min'], font_size_max)
             left_center_point= (random.randint(0, image.size[0]-font_size*max([len(i) for i in mulcontents])), random.randint(font_size*len(mulcontents), image.size[1]-font_size*len(mulcontents)/2))
@@ -117,7 +122,7 @@ class OCRData(object):
             image_out = image
         except AssertionError:
             # print('MadeError, retry.')
-            image_out, mulcontents_points = self.putContent2Image(mulcontents, background_image_path, font_path)
+            image_out, mulcontents_points = self.putContent2Image(mulcontents, background_image_path, font_path, resize_rate)
         return image_out, mulcontents_points
         
 
@@ -149,17 +154,17 @@ class OCRData(object):
 
 
     def chooseSaveDirByIndex(self, image_number_index, is_part_img=0):
-        train_rate = 1 - self.args['test_rate'] - self.args['valiation_rate']
+        train_rate = 1 - self.args['test_rate'] - self.args['validation_rate']
         if image_number_index < int(train_rate * self.args['image_number']):
             if not is_part_img:
                 image_save_dir = self.args['train_image_dir']
             else:
                 image_save_dir = self.args['train_part_image_dir']
-        elif image_number_index < int((train_rate + self.args['valiation_rate'])* self.args['image_number']):
+        elif image_number_index < int((train_rate + self.args['validation_rate'])* self.args['image_number']):
             if not is_part_img:
-                image_save_dir = self.args['valiation_image_dir']
+                image_save_dir = self.args['validation_image_dir']
             else:
-                image_save_dir = self.args['valiation_part_image_dir']
+                image_save_dir = self.args['validation_part_image_dir']
         else:
             if not is_part_img:
                 image_save_dir = self.args['test_image_dir']
@@ -167,6 +172,28 @@ class OCRData(object):
                 image_save_dir = self.args['test_part_image_dir']
         return image_save_dir
 
+    
+    def restoreFromPartImageDir(self):
+        train_image_list = glob.glob(os.path.join(self.args['train_part_image_dir'], '*.jpg'))
+        validation_image_list = glob.glob(os.path.join(self.args['validation_part_image_dir'], '*.jpg'))
+        test_image_list = glob.glob(os.path.join(self.args['test_part_image_dir'], '*.jpg'))
+        if len(test_image_list) != 0:
+            max_index = utils.findMaxIndex(test_image_list)
+        elif len(validation_image_list) != 0:
+            max_index = utils.findMaxIndex(validation_image_list)
+        elif len(train_image_list) != 0:
+            max_index = utils.findMaxIndex(train_image_list)
+        else:
+            max_index = 0
+        if max_index != 0:
+            print('There are %d images had been generated before. Do you want to continue from that? "y" will continue or "n" will recover.'%max_index)
+            choose = raw_input()
+            while choose not in ['y', 'n']:
+                print('Input error, please choose "y" or "n".')
+                choose = raw_input()
+            if choose == 'n':
+                max_index = 0
+        return max_index
 
 if __name__ == '__main__':
     main()
